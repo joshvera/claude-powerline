@@ -18,6 +18,8 @@ import {
   TmuxService,
   MetricsProvider,
   MetricsInfo,
+  UsageLimitProvider,
+  UsageLimitData,
   SegmentRenderer,
   PowerlineSymbols,
   AnySegmentConfig,
@@ -29,6 +31,7 @@ import {
   BlockSegmentConfig,
   TodaySegmentConfig,
   VersionSegmentConfig,
+  UsageLimitSegmentConfig,
 } from "./segments";
 import { BlockProvider, BlockInfo } from "./segments/block";
 import { TodayProvider, TodayInfo } from "./segments/today";
@@ -51,6 +54,7 @@ export class PowerlineRenderer {
   private _gitService?: GitService;
   private _tmuxService?: TmuxService;
   private _metricsProvider?: MetricsProvider;
+  private _usageLimitProvider?: UsageLimitProvider;
   private _segmentRenderer?: SegmentRenderer;
 
   constructor(private readonly config: PowerlineConfig) {
@@ -106,6 +110,13 @@ export class PowerlineRenderer {
     return this._metricsProvider;
   }
 
+  private get usageLimitProvider(): UsageLimitProvider {
+    if (!this._usageLimitProvider) {
+      this._usageLimitProvider = new UsageLimitProvider();
+    }
+    return this._usageLimitProvider;
+  }
+
   private get segmentRenderer(): SegmentRenderer {
     if (!this._segmentRenderer) {
       this._segmentRenderer = new SegmentRenderer(this.config, this.symbols);
@@ -140,6 +151,10 @@ export class PowerlineRenderer {
       ? await this.metricsProvider.getMetricsInfo(hookData.session_id, hookData)
       : null;
 
+    const usageLimitInfo = this.needsSegmentInfo("usageLimit")
+      ? await this.usageLimitProvider.getUsageLimitInfo()
+      : null;
+
     if (this.config.display.autoWrap) {
       return this.generateAutoWrapStatusline(
         hookData,
@@ -147,7 +162,8 @@ export class PowerlineRenderer {
         blockInfo,
         todayInfo,
         contextInfo,
-        metricsInfo
+        metricsInfo,
+        usageLimitInfo
       );
     }
 
@@ -160,7 +176,8 @@ export class PowerlineRenderer {
           blockInfo,
           todayInfo,
           contextInfo,
-          metricsInfo
+          metricsInfo,
+          usageLimitInfo
         )
       )
     );
@@ -174,7 +191,8 @@ export class PowerlineRenderer {
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
     contextInfo: ContextInfo | null,
-    metricsInfo: MetricsInfo | null
+    metricsInfo: MetricsInfo | null,
+    usageLimitInfo: UsageLimitData | null
   ): Promise<string> {
     const colors = this.getThemeColors();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
@@ -199,6 +217,7 @@ export class PowerlineRenderer {
           todayInfo,
           contextInfo,
           metricsInfo,
+          usageLimitInfo,
           colors,
           currentDir
         );
@@ -300,7 +319,8 @@ export class PowerlineRenderer {
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
     contextInfo: ContextInfo | null,
-    metricsInfo: MetricsInfo | null
+    metricsInfo: MetricsInfo | null,
+    usageLimitInfo: UsageLimitData | null
   ): Promise<string> {
     const colors = this.getThemeColors();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
@@ -333,6 +353,7 @@ export class PowerlineRenderer {
         todayInfo,
         contextInfo,
         metricsInfo,
+        usageLimitInfo,
         colors,
         currentDir
       );
@@ -363,6 +384,7 @@ export class PowerlineRenderer {
     todayInfo: TodayInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
+    usageLimitInfo: UsageLimitData | null,
     colors: PowerlineColors,
     currentDir: string
   ) {
@@ -435,6 +457,14 @@ export class PowerlineRenderer {
       return this.renderVersionSegment(
         segment.config as VersionSegmentConfig,
         hookData,
+        colors
+      );
+    }
+
+    if (segment.type === "usageLimit") {
+      return this.renderUsageLimitSegment(
+        segment.config as UsageLimitSegmentConfig,
+        usageLimitInfo,
         colors
       );
     }
@@ -533,6 +563,14 @@ export class PowerlineRenderer {
     colors: PowerlineColors
   ) {
     return this.segmentRenderer.renderVersion(hookData, colors, config);
+  }
+
+  private renderUsageLimitSegment(
+    config: UsageLimitSegmentConfig,
+    usageLimitInfo: UsageLimitData | null,
+    colors: PowerlineColors
+  ) {
+    return this.segmentRenderer.renderUsageLimit(usageLimitInfo, colors, config);
   }
 
   private initializeSymbols(): PowerlineSymbols {
@@ -639,6 +677,8 @@ export class PowerlineRenderer {
     const contextCritical = getSegmentColors("contextCritical");
     const metrics = getSegmentColors("metrics");
     const version = getSegmentColors("version");
+    const usageLimit = getSegmentColors("usageLimit");
+    const usageLimitWarning = getSegmentColors("usageLimitWarning");
 
     return {
       reset: colorSupport === "none" ? "" : RESET_CODE,
@@ -666,6 +706,10 @@ export class PowerlineRenderer {
       metricsFg: metrics.fg,
       versionBg: version.bg,
       versionFg: version.fg,
+      usageLimitBg: usageLimit.bg,
+      usageLimitFg: usageLimit.fg,
+      usageLimitWarningBg: usageLimitWarning.bg,
+      usageLimitWarningFg: usageLimitWarning.fg,
     };
   }
 
@@ -694,6 +738,8 @@ export class PowerlineRenderer {
         return colors.metricsBg;
       case "version":
         return colors.versionBg;
+      case "usageLimit":
+        return colors.usageLimitBg;
       default:
         return colors.modeBg;
     }

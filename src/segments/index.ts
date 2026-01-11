@@ -9,6 +9,7 @@ export {
 } from "./session";
 export { ContextProvider, ContextInfo } from "./context";
 export { MetricsProvider, MetricsInfo } from "./metrics";
+export { UsageLimitProvider, UsageLimitData } from "./usageLimit";
 export {
   SegmentRenderer,
   PowerlineSymbols,
@@ -21,4 +22,5 @@ export {
   BlockSegmentConfig,
   TodaySegmentConfig,
   VersionSegmentConfig,
+  UsageLimitSegmentConfig,
 } from "./renderer";

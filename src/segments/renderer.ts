@@ -3,6 +3,8 @@ import type { ClaudeHookData } from "../utils/claude";
 import type { PowerlineColors } from "../themes";
 import type { PowerlineConfig } from "../config/loader";
 import type { BlockInfo } from "./block";
+import type { UsageLimitData } from "./usageLimit";
+import { formatResetTime, isLimitReached } from "./usageLimit";
 import { formatModelName } from "../utils/formatters";
 
 export interface SegmentConfig {
@@ -58,6 +60,11 @@ export interface TodaySegmentConfig extends SegmentConfig {
 
 export interface VersionSegmentConfig extends SegmentConfig {}
 
+export interface UsageLimitSegmentConfig extends SegmentConfig {
+  showSevenDay?: boolean;  // Show 7-day usage when high (default: true)
+  showResetTime?: boolean; // Show time until reset (default: true)
+}
+
 export type AnySegmentConfig =
   | SegmentConfig
   | DirectorySegmentConfig
@@ -68,7 +75,8 @@ export type AnySegmentConfig =
   | MetricsSegmentConfig
   | BlockSegmentConfig
   | TodaySegmentConfig
-  | VersionSegmentConfig;
+  | VersionSegmentConfig
+  | UsageLimitSegmentConfig;
 
 import {
   formatCost,
@@ -736,6 +744,85 @@ export class SegmentRenderer {
       text: `${this.symbols.version} v${hookData.version}`,
       bgColor: colors.versionBg,
       fgColor: colors.versionFg,
+    };
+  }
+
+  /**
+   * Render usage limit segment for Pro/Max/Team subscription users.
+   * Shows 5-hour and optionally 7-day usage percentages with reset times.
+   */
+  renderUsageLimit(
+    usageLimitInfo: UsageLimitData | null,
+    colors: PowerlineColors,
+    config?: UsageLimitSegmentConfig,
+  ): SegmentData | null {
+    if (!usageLimitInfo || !usageLimitInfo.planName) {
+      return null;
+    }
+
+    const showSevenDay = config?.showSevenDay !== false;
+    const showResetTime = config?.showResetTime !== false;
+
+    // Handle API unavailable
+    if (usageLimitInfo.apiUnavailable) {
+      return {
+        text: `${usageLimitInfo.planName} | usage: \u26a0`,
+        bgColor: colors.usageLimitBg,
+        fgColor: colors.usageLimitFg,
+      };
+    }
+
+    // Handle limit reached
+    if (isLimitReached(usageLimitInfo)) {
+      const resetTime = usageLimitInfo.fiveHour === 100
+        ? formatResetTime(usageLimitInfo.fiveHourResetAt)
+        : formatResetTime(usageLimitInfo.sevenDayResetAt);
+      const resetPart = resetTime ? ` (resets ${resetTime})` : "";
+      return {
+        text: `${usageLimitInfo.planName} | \u26a0 Limit reached${resetPart}`,
+        bgColor: colors.usageLimitWarningBg || colors.contextCriticalBg,
+        fgColor: colors.usageLimitWarningFg || colors.contextCriticalFg,
+      };
+    }
+
+    // Normal display
+    const parts: string[] = [usageLimitInfo.planName];
+
+    // 5-hour usage
+    if (usageLimitInfo.fiveHour !== null) {
+      const resetTime = showResetTime ? formatResetTime(usageLimitInfo.fiveHourResetAt) : "";
+      const fiveHourPart = resetTime
+        ? `5h: ${usageLimitInfo.fiveHour}% (${resetTime})`
+        : `5h: ${usageLimitInfo.fiveHour}%`;
+      parts.push(fiveHourPart);
+    }
+
+    // 7-day usage (only show when high, >= 50%)
+    if (showSevenDay && usageLimitInfo.sevenDay !== null && usageLimitInfo.sevenDay >= 50) {
+      parts.push(`7d: ${usageLimitInfo.sevenDay}%`);
+    }
+
+    // Determine colors based on usage level
+    let bgColor = colors.usageLimitBg;
+    let fgColor = colors.usageLimitFg;
+
+    const highestUsage = Math.max(
+      usageLimitInfo.fiveHour ?? 0,
+      usageLimitInfo.sevenDay ?? 0
+    );
+
+    if (highestUsage >= 80) {
+      bgColor = colors.usageLimitWarningBg || colors.contextCriticalBg;
+      fgColor = colors.usageLimitWarningFg || colors.contextCriticalFg;
+    } else if (highestUsage >= 50) {
+      bgColor = colors.usageLimitModerateBg || colors.contextWarningBg;
+      fgColor = colors.usageLimitModerateFg || colors.contextWarningFg;
+    }
+
+    return {
+      text: parts.join(" | "),
+      bgColor,
+      fgColor,
     };
   }
 }

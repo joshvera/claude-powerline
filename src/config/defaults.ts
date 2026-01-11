@@ -42,6 +42,11 @@ export const DEFAULT_CONFIG: PowerlineConfig = {
             showLinesAdded: true,
             showLinesRemoved: true,
           },
+          usageLimit: {
+            enabled: true,
+            showSevenDay: true,
+            showResetTime: true,
+          },
         },
       },
     ],
